@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Таймер укладки плитки</title>
+<style>
+  :root {
+    --grout: #6C6C6C;
+    --tile-bg: #fdfdfb;
+    --ink: #3a3f3c;
+    --accent: #4a8c6a;
+    --stone: #9c9a93;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: radial-gradient(1200px 600px at 50% -10%, #e9e2d0 0%, #d9d0ba 40%, #cfc5ad 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    padding: calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 20px; font-weight: 700; margin: 6px 0 4px; letter-spacing: .3px; }
+  .hint { font-size: 13px; opacity: .75; margin-bottom: 12px; text-align: center; max-width: 94%; }
+
+  /* ---- ПАНЕЛЬ НАСТРОЕК ---- */
+  .settings {
+    width: 100%; max-width: 900px;
+    background: rgba(255,255,255,.55); border-radius: 16px;
+    padding: 12px 14px; margin-bottom: 14px;
+    backdrop-filter: blur(6px);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .set-row { display: flex; flex-wrap: wrap; gap: 14px 22px; align-items: flex-start; }
+  .set-group { display: flex; flex-direction: column; gap: 6px; flex: 1 1 auto; min-width: 150px; }
+  .set-label { font-size: 12px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; opacity: .7; }
+  .set-note { font-size: 11px; opacity: .6; text-transform: none; letter-spacing: 0; }
+
+  .presets { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: inherit; font-size: 13px; font-weight: 600;
+    padding: 7px 12px;
+    border: 2px solid rgba(0,0,0,.12); border-radius: 10px;
+    background: rgba(255,255,255,.7); color: var(--ink); cursor: pointer; white-space: nowrap;
+  }
+  .chip.active { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+  .num { display: flex; align-items: center; gap: 6px; }
+  .num button {
+    font: inherit; font-size: 16px; font-weight: 700;
+    width: 36px; height: 36px; padding: 0; line-height: 1;
+    border: 2px solid rgba(0,0,0,.12); border-radius: 9px;
+    background: rgba(255,255,255,.8); color: var(--ink); cursor: pointer;
+  }
+  .num span { min-width: 40px; text-align: center; font-weight: 700; font-size: 17px; }
+
+  /* ---- Два списка: ряды (высота) и колонки (ширина) ---- */
+  .duo { display: flex; gap: 16px; flex-wrap: wrap; width: 100%; }
+  .list-block { flex: 1 1 280px; display: flex; flex-direction: column; gap: 6px; }
+  .list-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .list { display: flex; flex-direction: column; gap: 5px; }
+  .line {
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,.5); border-radius: 9px; padding: 4px 8px;
+  }
+  .line-name { font-size: 12px; font-weight: 700; min-width: 60px; opacity: .8; }
+  .line input.wh {
+    font: inherit; font-size: 15px; font-weight: 700; text-align: center;
+    width: 64px; padding: 5px 2px;
+    border: 2px solid rgba(0,0,0,.14); border-radius: 8px;
+    background: rgba(255,255,255,.9); color: var(--ink);
+    -moz-appearance: textfield; appearance: textfield;
+  }
+  .line input.wh::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .line .unit { font-size: 11px; opacity: .55; font-weight: 600; min-width: 22px; }
+  .line-ctrl {
+    font: inherit; font-size: 16px; font-weight: 700; line-height: 1;
+    width: 32px; height: 30px; padding: 0;
+    border: 2px solid rgba(0,0,0,.14); border-radius: 8px;
+    background: rgba(255,255,255,.8); color: var(--ink); cursor: pointer;
+  }
+  .line .del {
+    font: inherit; font-size: 15px; line-height: 1;
+    width: 30px; height: 30px; padding: 0; margin-left: 2px;
+    border: 2px solid rgba(0,0,0,.14); border-radius: 8px;
+    background: rgba(255,60,60,.12); color: #a33; cursor: pointer;
+  }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .actions button {
+    font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 11px;
+    border: 2px solid rgba(0,0,0,.12); border-radius: 9px;
+    background: rgba(255,255,255,.8); color: var(--ink); cursor: pointer;
+  }
+
+  /* ---- СЕТКА ---- */
+  .wall {
+    width: 100%; max-width: 900px;
+    background: var(--grout); border-radius: 14px; padding: 4px;
+    display: grid; gap: 4px; box-shadow: 0 18px 40px rgba(0,0,0,.3);
+  }
+
+  .tile {
+    position: relative;
+    width: 100%; min-width: 0;
+    aspect-ratio: 1 / 2;
+    background: linear-gradient(158deg, #ffffff 0%, var(--tile-bg) 55%, #e8e8e2 100%);
+    border-radius: 7px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -3px 6px rgba(0,0,0,.06);
+    cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; padding: 4px;
+    user-select: none;
+    transition: transform .12s ease, box-shadow .12s ease;
+    touch-action: manipulation;
+    overflow: hidden;
+    container-type: size;
+  }
+  .tile:active:not(.running):not(.stone) { transform: scale(.97); }
+  .tile .tile-label {
+    font-size: 11px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; opacity: .45;
+    z-index: 1; text-align: center; line-height: 1.1;
+  }
+
+  .ring-wrap { position: relative; width: min(62cqw, 96cqh); height: min(62cqw, 96cqh); flex-shrink: 0; z-index: 1; }
+  .ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(0,0,0,.08); stroke-width: 6; }
+  .ring-fg {
+    fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round;
+    stroke-dasharray: 213.6; stroke-dashoffset: 0;
+    transition: stroke-dashoffset 1s linear, stroke .4s ease;
+  }
+  .ring-time {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-variant-numeric: tabular-nums; font-size: 17px; font-weight: 700;
+  }
+
+  .tile.check .ring-fg { stroke: #d99a2b; }
+  .tile.check { box-shadow: 0 4px 10px rgba(217,154,43,.5), inset 0 1px 0 rgba(255,255,255,.9); }
+  .tile.warn .ring-fg { stroke: #c74a3a; }
+  .tile.warn .ring-time { color: #a03a2c; }
+
+  /* ---- Компактный режим ---- */
+  @container (max-width: 128px) {
+    .tile .tile-label { display: none; }
+    .ring-wrap { width: min(98cqw, 98cqh); height: min(98cqw, 98cqh); }
+    .ring-bg { stroke-width: 72; stroke: rgba(255,255,255,.25); }
+    .ring-fg { stroke: none; fill: var(--accent); }
+    .tile.check .ring-fg { fill: #d99a2b; }
+    .tile.warn .ring-fg { fill: #c74a3a; }
+    .tile.stone .ring-fg { fill: #6e6d68; }
+    .ring-time { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.25); font-size: min(30cqw, 30cqh); }
+    .tile.warn .ring-time { color: #fff; }
+  }
+  @container (max-height: 110px) {
+    .tile .tile-label { display: none; }
+    .ring-wrap { width: min(98cqw, 98cqh); height: min(98cqw, 98cqh); }
+    .ring-bg { stroke-width: 72; stroke: rgba(255,255,255,.25); }
+    .ring-fg { stroke: none; fill: var(--accent); }
+    .tile.check .ring-fg { fill: #d99a2b; }
+    .tile.warn .ring-fg { fill: #c74a3a; }
+    .tile.stone .ring-fg { fill: #6e6d68; }
+    .ring-time { color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.25); font-size: min(30cqw, 30cqh); }
+  }
+
+  /*---- Frozen / stoned ----*/
+  .tile.stone {
+    cursor: default; pointer-events: none;
+    background: radial-gradient(120% 120% at 30% 20%, #cfcdc6 0%, var(--stone) 55%, #81807a 100%);
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.2), inset 0 -14px 26px rgba(0,0,0,.28);
+    color: #4d4c48;
+  }
+  .tile.stone .ring-fg { stroke: #6e6d68; }
+  .tile.stone .ring-time { color: #55534e; }
+  .tile.stone .ring-bg { stroke: rgba(0,0,0,.15); }
+  .stone-text { font-size: 9.5px; letter-spacing: 1.5px; text-transform: uppercase; opacity: .55; font-weight: 700; z-index: 1; text-align: center; }
+  .stone-crack {
+    position: absolute; inset: 0; pointer-events: none; opacity: .5; z-index: 2;
+    background-image:
+      linear-gradient(35deg, transparent 42%, rgba(0,0,0,.25) 46%, transparent 52%),
+      linear-gradient(-40deg, transparent 58%, rgba(0,0,0,.2) 61%, transparent 66%);
+  }
+
+  .controls { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  button.ctrl {
+    font: inherit; font-size: 14px; font-weight: 600;
+    padding: 10px 18px; border: none; border-radius: 12px;
+    background: rgba(255,255,255,.6); color: var(--ink);
+    box-shadow: 0 2px 6px rgba(0,0,0,.15); cursor: pointer;
+  }
+  button:active { transform: scale(.97); }
+  .footer { margin-top: 12px; font-size: 12px; opacity: .6; text-align: center; }
+
+  @media (max-width: 480px) {
+    .wall { gap: 3px; padding: 3px; border-radius: 10px; }
+    .line input.wh { width: 54px; }
+    .line-name { min-width: 48px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Укладка плитки</h1>
+<div class="hint">Нажмите на плитку — запустится 30-минутный таймер. На 10 минутах — звуковой сигнал, по завершении плитка каменеет.</div>
+
+<div class="settings">
+
+  <div class="set-row">
+    <div class="set-group" style="flex-basis:100%">
+      <div class="set-label">Формат плитки · применить ко всем</div>
+      <div class="presets" id="formatChips"></div>
+    </div>
+  </div>
+
+  <div class="set-row">
+    <div class="set-group">
+      <div class="set-label">Колонки · по горизонтали</div>
+      <div class="num"><button type="button" data-act="cols" data-step="-1">−</button><span id="colsVal"></span><button type="button" data-act="cols" data-step="1">+</button></div>
+      <div class="set-note">Добавляет колонку с последней шириной</div>
+    </div>
+    <div class="set-group">
+      <div class="set-label">Ряды · по вертикали</div>
+      <div class="num"><button type="button" data-act="rows" data-step="-1">−</button><span id="rowsVal"></span><button type="button" data-act="rows" data-step="1">+</button></div>
+      <div class="set-note">Добавляет ряд с последней высотой</div>
+    </div>
+  </div>
+
+  <div class="duo">
+    <div class="list-block">
+      <div class="list-head">
+        <span class="set-label">Ряды · высота (см)</span>
+        <div class="actions">
+          <button type="button" id="btnSameRows">Сделать равными</button>
+        </div>
+      </div>
+      <div class="list" id="rowsList"></div>
+    </div>
+    <div class="list-block">
+      <div class="list-head">
+        <span class="set-label">Колонки · ширина (см)</span>
+        <div class="actions">
+          <button type="button" id="btnSameCols">Сделать равными</button>
+        </div>
+      </div>
+      <div class="list" id="colsList"></div>
+    </div>
+  </div>
+
+  <div class="set-row" style="flex-basis:100%">
+    <div class="actions">
+      <button type="button" id="btnResetFormats">Сбросить форматы (20×40,5)</button>
+    </div>
+  </div>
+
+</div>
+
+<div class="wall" id="wall"></div>
+
+<div class="controls">
+  <button class="ctrl" id="btnAll" type="button">Запустить все</button>
+  <button class="ctrl" id="btnReset" type="button">Сбросить стену</button>
+</div>
+
+<div class="footer">Состояние таймеров сохраняется автоматически · 30 мин на корректировку</div>
+
+<script>
+(function () {
+  var TOTAL = 30 * 60;
+  var CHECK_AT = 10 * 60;
+  var STORAGE_KEY = 'tile-wall-v1';
+  var CFG_KEY = 'tile-wall-cfg-v4';
+
+  var wall = document.getElementById('wall');
+  var btnAll = document.getElementById('btnAll');
+  var btnReset = document.getElementById('btnReset');
+  var formatChips = document.getElementById('formatChips');
+  var rowsList = document.getElementById('rowsList');
+  var colsList = document.getElementById('colsList');
+  var rowsVal = document.getElementById('rowsVal');
+  var colsVal = document.getElementById('colsVal');
+  var btnSameRows = document.getElementById('btnSameRows');
+  var btnSameCols = document.getElementById('btnSameCols');
+  var btnResetFormats = document.getElementById('btnResetFormats');
+
+  var CIRC = 2 * Math.PI * 34;
+
+  var DEF_W = 20, DEF_H = 40.5;
+
+  var PRESETS = [
+    { label: 'Кабанчик 7,5×30', w: 7.5, h: 30 },
+    { label: 'Кабанчик 10×30', w: 10, h: 30 },
+    { label: 'Квадрат 20×20', w: 20, h: 20 },
+    { label: 'Квадрат 30×30', w: 30, h: 30 },
+    { label: 'Квадрат 60×60', w: 60, h: 60 },
+    { label: '25×40', w: 25, h: 40 },
+    { label: '20×40.5', w: 20, h: 40.5 },
+    { label: '30×60', w: 30, h: 60 },
+    { label: '45×90', w: 45, h: 90 },
+    { label: '60×120', w: 60, h: 120 }
+  ];
+
+  /* ---- Конфигурация: ширина колонок + высота рядов ---- */
+  // rowH[i] — высота ряда i; colW[j] — ширина колонки j
+  var cfg = { rowH: [], colW: [] };
+  function isNum(v) { return typeof v === 'number' && !isNaN(v); }
+  function clampDim(v, dflt) { return isNum(v) && v >= 0.5 && v <= 500 ? v : dflt; }
+
+  function defaultRowH() { var n = cfg.colW.length >= 1 ? cfg.colW.length : 4; return Array(n).fill(DEF_H); }
+  function defaultColW(n) { return Array(n).fill(DEF_W); }
+
+  function loadCfg() {
+    try {
+      var raw = localStorage.getItem(CFG_KEY); if (!raw) return;
+      var c = JSON.parse(raw); if (!c) return;
+      if (Array.isArray(c.colW) && c.colW.length >= 1 && c.colW.length <= 30)
+        cfg.colW = c.colW.map(function (v) { return clampDim(v, DEF_W); });
+      if (Array.isArray(c.rowH) && c.rowH.length >= 1 && c.rowH.length <= 30)
+        cfg.rowH = c.rowH.map(function (v) { return clampDim(v, DEF_H); });
+    } catch (e) {}
+  }
+  function ensureCfg() {
+    if (!cfg.colW.length) cfg.colW = defaultColW(4);
+    if (!cfg.rowH.length) cfg.rowH = Array(cfg.colW.length).fill(DEF_H);
+  }
+  function saveCfg() { try { localStorage.setItem(CFG_KEY, JSON.stringify({ rowH: cfg.rowH, colW: cfg.colW })); } catch (e) {} }
+  function count() { return cfg.rowH.length * cfg.colW.length; }
+
+  /* ---------- Звук ---------- */
+  var AC = null;
+  function audio() {
+    if (!AC) { var C = window.AudioContext || window.webkitAudioContext; if (!C) return null; AC = new C(); }
+    if (AC.state === 'suspended') AC.resume();
+    return AC;
+  }
+  function beep(freq, t0, dur, gain) {
+    var ctx = audio(); if (!ctx) return;
+    var t = ctx.currentTime + t0;
+    var o = ctx.createOscillator(); var g = ctx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(gain || 0.3, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + dur + 0.05);
+  }
+  function playCheck() { beep(880,0,.18,.35); beep(880,.28,.18,.35); beep(1174,.56,.22,.35); }
+  function playStone() { beep(160,0,.5,.5); beep(110,.05,.6,.5); beep(70,.15,.7,.5); }
+
+  /* ---------- Таймеры ---------- */
+  function freshTile(i) {
+    return { index: i, running: false, endsAt: null, remaining: TOTAL, frozen: false, checkPlayed: false };
+  }
+  var stored = null;
+  try { stored = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) {}
+  var tiles = [];
+  function ensureTiles() {
+    var n = count();
+    while (tiles.length < n) {
+      var i = tiles.length;
+      var base = (stored && stored[i]) ? stored[i] : null;
+      tiles.push(base ? Object.assign({}, freshTile(i), base) : freshTile(i));
+    }
+    tiles.length = n;
+  }
+  function save() { try { localStorage.setItem(STORAGE_KEY, JSON.stringify(tiles)); } catch (e) {} }
+
+  /* ---------- DOM ---------- */
+  var els = [];
+  function buildWall() {
+    wall.innerHTML = ''; els = [];
+    // колонки пропорциональны реальной ширине colW
+    wall.style.gridTemplateColumns = cfg.colW.map(function (w) { return w + 'fr'; }).join(' ');
+    var rows = cfg.rowH.length, cols = cfg.colW.length;
+    // Реальная укладка идёт снизу вверх: ряд №1 (индекс 0) на полу — внизу,
+    // каждый следующий индекс — ряд выше. Задаём позицию явно через grid-row,
+    // чтобы не зависеть от порядка элементов в DOM.
+    for (var r = 0; r < rows; r++) {
+      for (var c = 0; c < cols; c++) {
+        var idx = r * cols + c;
+        var w = cfg.colW[c], h = cfg.rowH[r];
+        var t = document.createElement('div');
+        t.className = 'tile';
+        // grid-row: низ сетки = последняя строка => ряд №1 (r=0) внизу, новые ряды выше.
+        t.style.gridRow = (rows - r) + ' / ' + (rows - r + 1);
+        t.style.gridColumn = (c + 1) + ' / ' + (c + 2);
+        t.style.aspectRatio = (w / h) + ' / 1';
+        t.innerHTML =
+          '<div class="tile-label">' + (r + 1) + '·' + (c + 1) + '</div>' +
+          '<div class="ring-wrap"><svg viewBox="0 0 80 80">' +
+            '<circle class="ring-bg" cx="40" cy="40" r="34" />' +
+            '<circle class="ring-fg" cx="40" cy="40" r="34" />' +
+          '</svg><div class="ring-time">—:—</div></div>' +
+          '<div class="stone-text" style="display:none">Закреплена</div>' +
+          '<div class="stone-crack"></div>';
+        (function (i) { t.addEventListener('click', function () { onTileClick(i); }); })(idx);
+        wall.appendChild(t); els.push(t);
+      }
+    }
+    for (var j = 0; j < els.length; j++) updateTileUI(j);
+  }
+
+  function fmtFull(s) {
+    s = Math.max(0, Math.ceil(s));
+    var m = Math.floor(s / 60), ss = s % 60;
+    return (m < 10 ? '0' + m : m) + ':' + (ss < 10 ? '0' + ss : ss);
+  }
+  function fmtShort(s) { return String(Math.max(0, Math.ceil(s) / 60 | 0)); }
+
+  function setRing(el, remaining, compact) {
+    var fg = el.querySelector('.ring-fg');
+    var time = el.querySelector('.ring-time');
+    var offset = CIRC * (1 - remaining / TOTAL);
+    fg.style.strokeDasharray = CIRC;
+    fg.style.strokeDashoffset = offset;
+    time.textContent = compact ? fmtShort(remaining) : fmtFull(remaining);
+  }
+  function isCompact(el) {
+    var r = el.getBoundingClientRect();
+    return (r.width > 0 && r.width < 128) || (r.height > 0 && r.height < 110);
+  }
+  function updateTileUI(idx) {
+    if (idx < 0 || idx >= els.length || !tiles[idx]) return;
+    var t = tiles[idx], el = els[idx];
+    el.classList.toggle('running', t.running);
+    el.classList.toggle('check', t.running && !t.frozen && t.remaining > 0 && t.remaining <= CHECK_AT);
+    el.classList.toggle('warn', t.running && !t.frozen && t.remaining <= 60);
+    el.classList.toggle('stone', t.frozen);
+    setRing(el, t.frozen ? 0 : t.remaining, isCompact(el) && !t.frozen);
+    el.querySelector('.stone-text').style.display = t.frozen ? '' : 'none';
+    el.querySelector('.tile-label').style.display = t.frozen ? 'none' : '';
+  }
+
+  /* ---------- Логика ---------- */
+  function startTile(idx) {
+    var t = tiles[idx]; if (t.frozen || t.running) return;
+    audio();
+    t.running = true; t.frozen = false; t.checkPlayed = false; t.remaining = TOTAL;
+    t.endsAt = Date.now() + TOTAL * 1000;
+    save(); updateTileUI(idx);
+  }
+  function freezeTile(idx) {
+    var t = tiles[idx];
+    t.running = false; t.frozen = true; t.remaining = 0; t.endsAt = null;
+    updateTileUI(idx); save(); playStone();
+  }
+  function onTileClick(idx) { if (!tiles[idx].running && !tiles[idx].frozen) startTile(idx); }
+  function tick() {
+    var now = Date.now(), changed = false;
+    for (var i = 0; i < tiles.length; i++) {
+      var t = tiles[i]; if (!t.running) continue;
+      var rem = Math.max(0, (t.endsAt - now) / 1000);
+      t.remaining = rem;
+      if (!t.checkPlayed && rem <= CHECK_AT) { t.checkPlayed = true; playCheck(); }
+      if (rem <= 0) freezeTile(i);
+      updateTileUI(i); changed = true;
+    }
+    if (changed) save();
+  }
+  function initUI() {
+    var now = Date.now();
+    for (var i = 0; i < tiles.length; i++) {
+      var t = tiles[i];
+      if (t.running && t.endsAt) {
+        var rem = (t.endsAt - now) / 1000;
+        if (rem <= 0) { t.running = false; t.frozen = true; t.remaining = 0; t.endsAt = null; }
+        else t.remaining = rem;
+      }
+      updateTileUI(i);
+    }
+    save();
+  }
+
+  /* ---------- UI настроек ---------- */
+  function renderNums() { rowsVal.textContent = cfg.rowH.length; colsVal.textContent = cfg.colW.length; }
+
+  function renderPresets() {
+    formatChips.innerHTML = '';
+    PRESETS.forEach(function (p) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'chip';
+      b.textContent = p.label;
+      b.addEventListener('click', function () {
+        var same = cfg.rowH.every(function (h) { return Math.abs(h - p.h) < 0.01; })
+                && cfg.colW.every(function (w) { return Math.abs(w - p.w) < 0.01; });
+        if (same && !confirm('Применить формат ' + p.label + ' ко всем рядам и колонкам?')) return;
+        for (var i = 0; i < cfg.rowH.length; i++) cfg.rowH[i] = p.h;
+        for (var j = 0; j < cfg.colW.length; j++) cfg.colW[j] = p.w;
+        applyCfg();
+      });
+      formatChips.appendChild(b);
+    });
+  }
+  function activePreset() {
+    var firstR = cfg.rowH[0], firstC = cfg.colW[0];
+    for (var i = 0; i < PRESETS.length; i++) {
+      if (Math.abs(PRESETS[i].h - firstR) < 0.01 && Math.abs(PRESETS[i].w - firstC) < 0.01) return i;
+    }
+    return -1;
+  }
+
+  function renderLists() {
+    renderRows();
+    renderCols();
+    renderActiveChip();
+  }
+  function renderRows() {
+    rowsList.innerHTML = '';
+    for (var i = 0; i < cfg.rowH.length; i++) {
+      (function (idx) {
+        var line = document.createElement('div');
+        line.className = 'line';
+        line.innerHTML =
+          '<span class="line-name">Ряд ' + (idx + 1) + '</span>' +
+          '<input class="wh" type="number" inputmode="decimal" step="0.5" min="1" value="' + cfg.rowH[idx] + '">' +
+          '<span class="unit">см</span>' +
+          '<button class="line-ctrl" type="button" title="Удалить ряд">✕</button>';
+        var inp = line.querySelector('.wh');
+        inp.addEventListener('input', function () {
+          var v = parseFloat(String(inp.value).replace(',', '.'));
+          if (isNum(v) && v >= 0.5 && v <= 500) { cfg.rowH[idx] = v; applyCfg(false); }
+        });
+        line.querySelector('.line-ctrl').addEventListener('click', function () {
+          if (cfg.rowH.length <= 1) return;
+          cfg.rowH.splice(idx, 1); applyCfg();
+        });
+        rowsList.appendChild(line);
+      })(i);
+    }
+  }
+  function renderCols() {
+    colsList.innerHTML = '';
+    for (var i = 0; i < cfg.colW.length; i++) {
+      (function (idx) {
+        var line = document.createElement('div');
+        line.className = 'line';
+        line.innerHTML =
+          '<span class="line-name">Колонка ' + (idx + 1) + '</span>' +
+          '<input class="wh" type="number" inputmode="decimal" step="0.5" min="1" value="' + cfg.colW[idx] + '">' +
+          '<span class="unit">см</span>' +
+          '<button class="line-ctrl" type="button" title="Удалить колонку">✕</button>';
+        var inp = line.querySelector('.wh');
+        inp.addEventListener('input', function () {
+          var v = parseFloat(String(inp.value).replace(',', '.'));
+          if (isNum(v) && v >= 0.5 && v <= 500) { cfg.colW[idx] = v; applyCfg(false); }
+        });
+        line.querySelector('.line-ctrl').addEventListener('click', function () {
+          if (cfg.colW.length <= 1) return;
+          cfg.colW.splice(idx, 1); applyCfg();
+        });
+        colsList.appendChild(line);
+      })(i);
+    }
+  }
+  function renderActiveChip() {
+    var chips = formatChips.querySelectorAll('.chip');
+    var idx = activePreset();
+    for (var i = 0; i < chips.length; i++) {
+      if (chips[i]) chips[i].classList.toggle('active', i === idx);
+    }
+  }
+
+  function applyCfg(rebuildLists) {
+    if (rebuildLists !== false) renderLists();
+    renderNums(); saveCfg();
+    ensureTiles(); buildWall(); save();
+  }
+
+  /* ---------- События ---------- */
+  var numBtns = document.querySelectorAll('.num button');
+  for (var bi = 0; bi < numBtns.length; bi++) {
+    (function (btn) {
+      btn.addEventListener('click', function () {
+        var act = btn.getAttribute('data-act');
+        var step = parseInt(btn.getAttribute('data-step'), 10);
+        if (act === 'cols') {
+          var nc = cfg.colW.length + step;
+          if (nc >= 1 && nc <= 30) {
+            if (step > 0) cfg.colW.push(cfg.colW[cfg.colW.length - 1]);
+            else cfg.colW.pop();
+            applyCfg();
+          }
+        } else {
+          var nr = cfg.rowH.length + step;
+          if (nr >= 1 && nr <= 30) {
+            if (step > 0) cfg.rowH.push(cfg.rowH[cfg.rowH.length - 1]);
+            else cfg.rowH.pop();
+            applyCfg();
+          }
+        }
+      });
+    })(numBtns[bi]);
+  }
+
+  btnSameRows.addEventListener('click', function () {
+    if (cfg.rowH.length < 2) return;
+    var v = cfg.rowH[0];
+    for (var i = 0; i < cfg.rowH.length; i++) cfg.rowH[i] = v;
+    applyCfg();
+  });
+  btnSameCols.addEventListener('click', function () {
+    if (cfg.colW.length < 2) return;
+    var v = cfg.colW[0];
+    for (var i = 0; i < cfg.colW.length; i++) cfg.colW[i] = v;
+    applyCfg();
+  });
+  btnResetFormats.addEventListener('click', function () {
+    if (!confirm('Сбросить все размеры рядов и колонок к 20×40,5?')) return;
+    cfg.rowH = Array(cfg.rowH.length).fill(DEF_H);
+    cfg.colW = Array(cfg.colW.length).fill(DEF_W);
+    applyCfg();
+  });
+
+  btnReset.addEventListener('click', function () {
+    if (!confirm('Сбросить все плитки и остановить таймеры?')) return;
+    for (var i = 0; i < tiles.length; i++) tiles[i] = freshTile(i);
+    save();
+    buildWall();      // полностью пересобрать DOM, чтобы сбросить визуал и стейт
+    initUI();
+  });
+  btnAll.addEventListener('click', function () {
+    audio();
+    var any = false;
+    for (var i = 0; i < tiles.length; i++) {
+      if (!tiles[i].running && !tiles[i].frozen) { startTile(i); any = true; }
+    }
+    if (!any && confirm('Нет свободных плиток. Сбросить стену?')) btnReset.click();
+  });
+
+  /* ---------- init ---------- */
+  loadCfg();
+  ensureCfg();
+  ensureTiles();
+  renderNums();
+  renderPresets();
+  renderLists();
+  buildWall();
+  initUI();
+  setInterval(tick, 1000);
+  window.addEventListener('resize', function () {
+    for (var i = 0; i < els.length; i++) updateTileUI(i);
+  });
+})();
+</script>
+</body>
+</html>
